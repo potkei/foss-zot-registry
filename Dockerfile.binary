@@ -1,0 +1,106 @@
+# syntax=docker/dockerfile:1
+# =============================================================================
+# BINARY FALLBACK
+# Downloads pre-built binary from official upstream release.
+# Use ONLY when source build is temporarily blocked.
+# REQUIRES tech lead approval. Document reason in CHANGELOG.md.
+# No CVE patches can be applied in binary mode.
+#
+# Container runtime compatibility:
+#   Docker 23+ (BuildKit default)  — full cache mount support
+#   Podman 4.2+ / Buildah 1.28+   — partial cache mount support
+#   Podman <4.2                    — cache directives ignored, builds still work
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Build arguments
+# -----------------------------------------------------------------------------
+ARG BASE_IMAGE=ubuntu:22.04
+ARG UPSTREAM_VERSION=REPLACE_ME
+ARG BINARY_URL=REPLACE_ME
+ARG BINARY_SHA256=REPLACE_ME
+ARG BINARY_GPG_URL=
+ARG PROJECT_NAME=REPLACE_ME
+ARG BUILD_DATE
+ARG VCS_REF
+ARG OUR_VERSION=${UPSTREAM_VERSION}-r1
+
+# =============================================================================
+# Stage 1: Download & Verify Binary
+# =============================================================================
+FROM ubuntu:22.04 AS downloader
+
+ARG BINARY_URL
+ARG BINARY_SHA256
+ARG BINARY_GPG_URL
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg \
+    ca-certificates
+
+WORKDIR /binary
+
+# Download official binary release archive
+RUN curl -fsSL "${BINARY_URL}" -o binary.archive && \
+    echo "Downloaded: ${BINARY_URL}"
+
+# Verify SHA256 checksum — NEVER skip this even for binary downloads
+RUN echo "${BINARY_SHA256}  binary.archive" | sha256sum --check --strict && \
+    echo "SHA256 checksum verified"
+
+# Verify GPG signature if provided
+RUN if [ -n "${BINARY_GPG_URL}" ]; then \
+      curl -fsSL "${BINARY_GPG_URL}" -o binary.archive.sig && \
+      gpg --verify binary.archive.sig binary.archive && \
+      echo "GPG signature verified"; \
+    fi
+
+# Extract binary
+RUN if echo "${BINARY_URL}" | grep -qE '\.tar\.gz$|\.tgz$'; then \
+      tar -xzf binary.archive; \
+    elif echo "${BINARY_URL}" | grep -q '\.tar\.bz2$'; then \
+      tar -xjf binary.archive; \
+    elif echo "${BINARY_URL}" | grep -q '\.tar\.xz$'; then \
+      tar -xJf binary.archive; \
+    elif echo "${BINARY_URL}" | grep -q '\.zip$'; then \
+      apt-get update && apt-get install -y --no-install-recommends unzip && \
+      unzip binary.archive; \
+    fi
+
+# =============================================================================
+# Stage 2: Runtime Image
+# =============================================================================
+FROM ${BASE_IMAGE} AS runtime
+
+ARG PROJECT_NAME
+ARG UPSTREAM_VERSION
+ARG OUR_VERSION
+ARG BUILD_DATE
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="${PROJECT_NAME} (patched fork — BINARY FALLBACK)" \
+      org.opencontainers.image.version="${OUR_VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.source="https://github.com/REPLACE_ORG/REPLACE_REPO" \
+      build.strategy="binary" \
+      build.upstream.version="${UPSTREAM_VERSION}" \
+      build.our.version="${OUR_VERSION}" \
+      build.warning="BINARY FALLBACK ACTIVE — no CVE patches applied"
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates
+
+# TODO: Copy binary from correct path inside the extracted archive
+COPY --from=downloader /binary/${PROJECT_NAME} /usr/local/bin/${PROJECT_NAME}
+
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin appuser
+USER appuser
+
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/REPLACE_ME"]

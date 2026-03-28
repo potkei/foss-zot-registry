@@ -1,0 +1,123 @@
+# =============================================================================
+# JENKINS DECLARATIVE PIPELINE
+# Handles both polyrepo and monorepo modes.
+# Detects monorepo by presence of projects/ directory.
+# Both build strategies (source/binary) run in parallel.
+# CVE scan gate blocks release if unexcepted critical/high findings.
+# =============================================================================
+
+pipeline:
+  agent:
+    docker:
+      image: docker:24-dind
+      args: '-v /var/run/docker.sock:/var/run/docker.sock'
+
+  environment:
+    BUILD_STRATEGY: source
+    REGISTRY: credentials('REGISTRY_URL')
+    REGISTRY_CREDS: credentials('REGISTRY_CREDENTIALS')
+    SONAR_TOKEN: credentials('SONAR_TOKEN')
+    SONAR_HOST_URL: credentials('SONAR_HOST_URL')
+    COSIGN_KEY: credentials('COSIGN_PRIVATE_KEY')
+    PROJECT_NAME: "${env.JOB_BASE_NAME}"
+    OUR_VERSION: "${UPSTREAM_VERSION}-r${BUILD_NUMBER}"
+    IS_MONOREPO: "${fileExists('projects')}"
+
+  options:
+    timeout:
+      time: 60
+      unit: MINUTES
+    buildDiscarder:
+      logRotator:
+        numToKeepStr: '20'
+
+  stages:
+
+    # -------------------------------------------------------------------------
+    stage('Checkout & Setup'):
+      steps:
+        checkout scm
+        sh 'chmod +x .cicd/docker-resources/scripts/*.sh 2>/dev/null || true'
+        sh 'source .cicd/scan-versions.env'
+
+    # -------------------------------------------------------------------------
+    stage('Lint'):
+      parallel:
+        stage('Hadolint'):
+          steps:
+            sh '.cicd/docker-resources/scripts/scan-iac.sh --hadolint'
+        stage('Checkov'):
+          steps:
+            sh '.cicd/docker-resources/scripts/scan-iac.sh --checkov'
+
+    # -------------------------------------------------------------------------
+    stage('Build'):
+      when:
+        expression: "!IS_MONOREPO"
+      parallel:
+        stage('Source Build'):
+          steps:
+            sh 'BUILD_STRATEGY=source .cicd/docker-resources/scripts/build-source.sh'
+        stage('Binary Build'):
+          steps:
+            sh 'BUILD_STRATEGY=binary .cicd/docker-resources/scripts/build-binary.sh'
+            post:
+              always:
+                echo 'Binary build complete (fallback verification)'
+
+    # -------------------------------------------------------------------------
+    stage('Build All (Monorepo)'):
+      when:
+        expression: "IS_MONOREPO"
+      steps:
+        sh 'projects/build-all.sh'
+
+    # -------------------------------------------------------------------------
+    stage('SAST'):
+      parallel:
+        stage('Semgrep'):
+          steps:
+            sh '.cicd/docker-resources/scripts/scan-sast.sh --semgrep'
+        stage('SonarQube'):
+          steps:
+            sh '.cicd/docker-resources/scripts/scan-sast.sh --sonar'
+
+    # -------------------------------------------------------------------------
+    stage('Security Scan'):
+      parallel:
+        stage('CVE Scan (Trivy)'):
+          steps:
+            sh '.cicd/docker-resources/scripts/scan-cve.sh'
+        stage('Dependency Check'):
+          steps:
+            sh '.cicd/docker-resources/scripts/scan-dependencies.sh'
+        stage('Secret Detection'):
+          steps:
+            sh '.cicd/docker-resources/scripts/scan-secrets.sh'
+
+    # -------------------------------------------------------------------------
+    stage('Scan Gate'):
+      steps:
+        sh '.cicd/docker-resources/scripts/scan-aggregate.sh --fail-on-critical'
+      post:
+        failure:
+          echo 'Scan gate FAILED — critical/high findings detected. Release blocked.'
+
+    # -------------------------------------------------------------------------
+    stage('Release'):
+      when:
+        branch: 'main'
+        expression: "currentBuild.result == 'SUCCESS'"
+      steps:
+        sh '.cicd/docker-resources/scripts/release.sh'
+
+  post:
+    always:
+      archiveArtifacts:
+        artifacts: 'reports/**'
+        allowEmptyArchive: true
+    failure:
+      mail:
+        to: 'security-team@company.com'
+        subject: "BUILD FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+        body: "Pipeline failed. Check reports at ${env.BUILD_URL}"

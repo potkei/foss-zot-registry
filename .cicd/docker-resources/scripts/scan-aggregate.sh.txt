@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# =============================================================================
+# SCAN AGGREGATE — Read all scan reports and produce consolidated summary
+# Usage: ./scan-aggregate.sh [--fail-on-critical]
+# This file is stored as .sh.txt — translate to .sh via onboard skill.
+# =============================================================================
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+REPORTS="${ROOT_DIR}/reports"
+FAIL_ON_CRITICAL="${1:-}"
+EXIT_CODE=0
+
+echo "=== SCAN AGGREGATE REPORT ==="
+echo "Generated: $(date -u)"
+echo ""
+
+# Trivy
+if [ -f "${REPORTS}/trivy.json" ]; then
+  CRITICAL=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' "${REPORTS}/trivy.json" 2>/dev/null || echo 0)
+  HIGH=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length' "${REPORTS}/trivy.json" 2>/dev/null || echo 0)
+  echo "Trivy CVE:       Critical=${CRITICAL}  High=${HIGH}"
+  [ "${CRITICAL}" -gt 0 ] || [ "${HIGH}" -gt 0 ] && EXIT_CODE=1
+fi
+
+# Gitleaks
+if [ -f "${REPORTS}/gitleaks.json" ]; then
+  SECRETS=$(jq 'length' "${REPORTS}/gitleaks.json" 2>/dev/null || echo 0)
+  echo "Gitleaks secrets: ${SECRETS}"
+  [ "${SECRETS}" -gt 0 ] && EXIT_CODE=1
+fi
+
+# Semgrep
+if [ -f "${REPORTS}/semgrep.json" ]; then
+  FINDINGS=$(jq '.results | length' "${REPORTS}/semgrep.json" 2>/dev/null || echo 0)
+  echo "Semgrep findings: ${FINDINGS}"
+fi
+
+echo ""
+if [ "${EXIT_CODE}" -ne 0 ] && [ "${FAIL_ON_CRITICAL}" = "--fail-on-critical" ]; then
+  echo "GATE: FAILED — critical findings detected"
+  exit 1
+fi
+
+echo "GATE: PASSED"

@@ -1,0 +1,45 @@
+site_name: FOSS Boilerplate — Documentation
+site_description: Managed fork with security patches and controlled build pipeline
+repo_url: https://github.com/REPLACE_ORG/REPLACE_REPO
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Architecture:
+      - Build Pipeline: architecture/build-pipeline.md
+      - Security Scanning: architecture/security-scanning.md
+  - Operations:
+      - Getting Started: operations/getting-started.md
+      - Template Workflow: operations/template-workflow.md
+      - CVE Patching: operations/cve-patching.md
+      - Releasing: operations/releasing.md
+  - Reference:
+      - Versioning: reference/versioning.md
+      - Folder Structure: reference/folder-structure.md

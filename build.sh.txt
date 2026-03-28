@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+# =============================================================================
+# BUILD — Main entrypoint for all build, scan, and release operations
+# Usage:
+#   ./build.sh                        # source build (default)
+#   ./build.sh --binary               # binary fallback build
+#   ./build.sh --both                 # build both strategies
+#   ./build.sh --scan                 # run all security scans
+#   ./build.sh --scan --cve           # run only CVE scan
+#   ./build.sh --release              # full release pipeline
+#   ./build.sh --docs                 # serve documentation
+#   ./build.sh --registry             # start local registry + UI
+#   ./build.sh --push-local           # build then push to localhost:5000
+#   BUILD_STRATEGY=binary ./build.sh  # override via env var
+# =============================================================================
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPTS="${ROOT_DIR}/.cicd/docker-resources/scripts"
+
+# Detect container runtime — aliases don't propagate into non-interactive scripts
+DOCKER_CMD="docker"
+if ! command -v docker >/dev/null 2>&1 && command -v podman >/dev/null 2>&1; then
+  DOCKER_CMD="podman"
+fi
+
+# Defaults
+ACTION="build"
+BUILD_STRATEGY="${BUILD_STRATEGY:-source}"
+SCAN_ARGS=()
+
+# -------------------------------------------------------------------------
+# Parse arguments
+# -------------------------------------------------------------------------
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --source)    BUILD_STRATEGY="source"; shift ;;
+    --binary)    BUILD_STRATEGY="binary"; shift ;;
+    --both)      ACTION="build-both"; shift ;;
+    --scan)      ACTION="scan"; shift ;;
+    --release)   ACTION="release"; shift ;;
+    --docs)      ACTION="docs"; shift ;;
+    --registry)   ACTION="registry"; shift ;;
+    --push-local) ACTION="push-local"; shift ;;
+    --sast|--cve|--deps|--secrets|--iac)
+                 SCAN_ARGS+=("$1"); shift ;;
+    --help|-h)
+      echo "Usage: ./build.sh [--source|--binary|--both|--scan|--release|--docs|--registry]"
+      echo ""
+      echo "Build:"
+      echo "  (default)    Source build using Dockerfile"
+      echo "  --source     Explicit source build"
+      echo "  --binary     Binary fallback build"
+      echo "  --both       Build both strategies in parallel"
+      echo ""
+      echo "Scan:"
+      echo "  --scan                Run all security scans"
+      echo "  --scan --sast         SAST only (Semgrep + SonarQube)"
+      echo "  --scan --cve          CVE scan only (Trivy)"
+      echo "  --scan --deps         Dependency check only (OWASP DC)"
+      echo "  --scan --secrets      Secret detection only (Gitleaks)"
+      echo "  --scan --iac          IaC lint only (Hadolint + Checkov)"
+      echo ""
+      echo "Release:"
+      echo "  --release    Full pipeline: build + scan + tag + sign + push"
+      echo ""
+      echo "Other:"
+      echo "  --docs         Serve MkDocs documentation at http://localhost:8000"
+      echo "  --registry     Start local registry (localhost:5000) + UI (localhost:5001)"
+      echo "  --push-local   Build source image then push to localhost:5000"
+      echo ""
+      echo "Environment:"
+      echo "  BUILD_STRATEGY=source|binary   Override build strategy"
+      echo "  SONAR_TOKEN + SONAR_HOST_URL   Use external SonarQube"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1 (try --help)"
+      exit 1
+      ;;
+  esac
+done
+
+# -------------------------------------------------------------------------
+# Load project config if available
+# -------------------------------------------------------------------------
+if [ -f "${ROOT_DIR}/package.json" ]; then
+  PROJECT_NAME="$(jq -r '.upstream.name // .name // "foss-project"' "${ROOT_DIR}/package.json")"
+  OUR_VERSION="$(jq -r '.version // "dev"' "${ROOT_DIR}/package.json")"
+else
+  PROJECT_NAME="${PROJECT_NAME:-foss-project}"
+  OUR_VERSION="${OUR_VERSION:-dev}"
+fi
+
+export PROJECT_NAME OUR_VERSION BUILD_STRATEGY
+
+echo "==================================================="
+echo " FOSS Build — ${ACTION}"
+echo " Project:  ${PROJECT_NAME}"
+echo " Version:  ${OUR_VERSION}"
+echo " Strategy: ${BUILD_STRATEGY}"
+echo "==================================================="
+echo ""
+
+# -------------------------------------------------------------------------
+# Actions
+# -------------------------------------------------------------------------
+case "${ACTION}" in
+
+  build)
+    if [ "${BUILD_STRATEGY}" = "source" ]; then
+      echo "--- Source build ---"
+      if [ -x "${SCRIPTS}/build-source.sh" ]; then
+        "${SCRIPTS}/build-source.sh"
+      else
+        docker compose -f .local/docker-compose.build.yaml --profile source build
+      fi
+    elif [ "${BUILD_STRATEGY}" = "binary" ]; then
+      echo "--- Binary fallback build ---"
+      echo "WARNING: Binary build active — no CVE patches applied"
+      if [ -x "${SCRIPTS}/build-binary.sh" ]; then
+        "${SCRIPTS}/build-binary.sh"
+      else
+        docker compose -f .local/docker-compose.build.yaml --profile binary build
+      fi
+    else
+      echo "ERROR: Unknown BUILD_STRATEGY: ${BUILD_STRATEGY}"
+      echo "Valid values: source, binary"
+      exit 1
+    fi
+    ;;
+
+  build-both)
+    echo "--- Building both strategies ---"
+    docker compose -f .local/docker-compose.build.yaml --profile all build
+    ;;
+
+  scan)
+    echo "--- Running security scans ---"
+    mkdir -p "${ROOT_DIR}/reports"
+    if [ -x "${SCRIPTS}/scan-all.sh" ]; then
+      "${SCRIPTS}/scan-all.sh" "${SCAN_ARGS[@]+"${SCAN_ARGS[@]}"}"
+    else
+      # Determine compose file based on SonarQube mode
+      if [ -n "${SONAR_TOKEN:-}" ] && [ -n "${SONAR_HOST_URL:-}" ]; then
+        COMPOSE_SCAN=".local/docker-compose.scan.external.yml"
+      else
+        COMPOSE_SCAN=".local/docker-compose.scan.yml"
+      fi
+      docker compose --env-file "${ROOT_DIR}/.cicd/scan-versions.env" -f "${COMPOSE_SCAN}" up --abort-on-container-exit
+    fi
+    echo ""
+    echo "Reports saved to: ${ROOT_DIR}/reports/"
+    ;;
+
+  release)
+    echo "--- Full release pipeline ---"
+    echo "Step 1/3: Build"
+    "${0}" --source
+    echo ""
+    echo "Step 2/3: Scan"
+    "${0}" --scan
+    echo ""
+    echo "Step 3/3: Release"
+    if [ -x "${SCRIPTS}/release.sh" ]; then
+      "${SCRIPTS}/release.sh"
+    else
+      echo "ERROR: release.sh not found. Run ./init.sh first."
+      exit 1
+    fi
+    ;;
+
+  docs)
+    echo "--- Serving documentation at http://localhost:8000 ---"
+    docker compose -f .local/docker-compose.docs.yml up
+    ;;
+
+  registry)
+    echo "--- Starting local registry ---"
+    docker compose -f .local/docker-compose.registry.yml up -d
+    echo "Registry: http://localhost:5000"
+    echo "Registry UI: http://localhost:5001"
+    ;;
+
+  push-local)
+    IMAGE_REGISTRY="${IMAGE_REGISTRY:-localhost:5000}"
+    echo "--- Building and pushing to ${IMAGE_REGISTRY} ---"
+    BUILD_STRATEGY="source" ${DOCKER_CMD} compose -f .local/docker-compose.build.yaml --profile source build
+    IMAGE="${IMAGE_REGISTRY}/${PROJECT_NAME}:${OUR_VERSION}-source"
+    ${DOCKER_CMD} push "${IMAGE}"
+    echo "Pushed: ${IMAGE}"
+    ;;
+
+esac
+
+echo ""
+echo "=== Done ==="

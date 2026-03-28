@@ -1,0 +1,13 @@
+apiVersion: v2
+name: foss-project
+description: Managed fork with CVE security patches
+type: application
+version: 0.1.0
+appVersion: "REPLACE_ME-r1"
+maintainers:
+  - name: REPLACE_NAME
+    email: REPLACE_EMAIL
+keywords:
+  - foss
+  - security
+  - patched

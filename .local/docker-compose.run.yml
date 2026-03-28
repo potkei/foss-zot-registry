@@ -1,0 +1,27 @@
+# =============================================================================
+# LOCAL RUN — Run the built app image locally after a successful build
+# Usage:
+#   docker compose -f .local/docker-compose.run.yml up         # foreground
+#   docker compose -f .local/docker-compose.run.yml up -d      # background
+#   docker compose -f .local/docker-compose.run.yml down       # stop
+#   make run                                                   # shortcut
+# =============================================================================
+
+name: foss-run
+
+services:
+
+  app:
+    image: ${IMAGE_REGISTRY:-localhost}/${PROJECT_NAME:-foss-project}:${OUR_VERSION:-dev}-source
+    pull_policy: missing
+    ports:
+      - "${APP_PORT:-8080}:${APP_PORT:-8080}"
+    environment:
+      APP_ENV: local
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${APP_PORT:-8080}/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

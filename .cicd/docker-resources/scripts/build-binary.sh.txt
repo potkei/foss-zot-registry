@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# =============================================================================
+# BUILD BINARY — CI script for binary fallback stage
+# Downloads pre-built binary, verifies checksum, builds image.
+# This file is stored as .sh.txt — translate to .sh via onboard skill.
+# REMINDER: Binary fallback is temporary. Resume source build ASAP.
+# =============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+
+# Detect container runtime — aliases don't propagate into non-interactive scripts
+DOCKER_CMD="docker"
+if ! command -v docker >/dev/null 2>&1 && command -v podman >/dev/null 2>&1; then
+  DOCKER_CMD="podman"
+fi
+
+PROJECT_NAME="$(jq -r .upstream.name "${ROOT_DIR}/package.json")"
+UPSTREAM_VERSION="$(jq -r .upstream.version "${ROOT_DIR}/package.json")"
+OUR_VERSION="$(jq -r .version "${ROOT_DIR}/package.json")"
+REGISTRY="$(jq -r .registry "${ROOT_DIR}/package.json")"
+IMAGE_TAG="${REGISTRY}/${PROJECT_NAME}:${OUR_VERSION}"
+
+echo "=== BINARY FALLBACK BUILD ==="
+echo "WARNING: Binary build active — no CVE patches applied"
+echo "Project:          ${PROJECT_NAME}"
+echo "Upstream version: ${UPSTREAM_VERSION}"
+echo "Our version:      ${OUR_VERSION}"
+
+${DOCKER_CMD} build \
+  --file "${ROOT_DIR}/Dockerfile.binary" \
+  --tag "${IMAGE_TAG}-binary" \
+  --build-arg "UPSTREAM_VERSION=${UPSTREAM_VERSION}" \
+  --build-arg "BINARY_URL=${BINARY_URL:-$(jq -r .upstream.binaryUrl "${ROOT_DIR}/package.json")}" \
+  --build-arg "BINARY_SHA256=${BINARY_SHA256:-$(jq -r .upstream.binarySha256 "${ROOT_DIR}/package.json")}" \
+  --build-arg "PROJECT_NAME=${PROJECT_NAME}" \
+  --build-arg "OUR_VERSION=${OUR_VERSION}" \
+  --build-arg "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --build-arg "VCS_REF=$(git rev-parse --short HEAD)" \
+  "${ROOT_DIR}"
+
+echo "--- Binary build complete: ${IMAGE_TAG}-binary ---"
+echo "=== BINARY BUILD PASSED ==="

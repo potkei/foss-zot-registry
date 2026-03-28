@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# =============================================================================
+# ONBOARD FOSS — Interactive scaffold for new FOSS project
+# Translates all .sh.txt/.py.txt/.bat.txt files to executable equivalents.
+# This file is stored as .sh.txt — translate to .sh via onboard skill.
+# =============================================================================
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+
+echo "==================================================="
+echo " FOSS Boilerplate — New Project Onboarding"
+echo "==================================================="
+echo ""
+
+# Collect project details
+read -rp "Repo mode (polyrepo/monorepo) [polyrepo]: " REPO_MODE
+REPO_MODE="${REPO_MODE:-polyrepo}"
+
+read -rp "FOSS project name (e.g. nginx, redis, zip): " PROJECT_NAME
+read -rp "Upstream version to pin (e.g. 1.27.3): " UPSTREAM_VERSION
+read -rp "Archive download URL: " ARCHIVE_URL
+read -rp "Archive format (tar.gz/tar.bz2/tar.xz/zip) [tar.gz]: " ARCHIVE_FORMAT
+ARCHIVE_FORMAT="${ARCHIVE_FORMAT:-tar.gz}"
+read -rp "SHA256 checksum: " SHA256
+read -rp "GPG signature URL (leave blank if none): " GPG_URL
+read -rp "Language (c/go/java/python/other) [c]: " LANGUAGE
+LANGUAGE="${LANGUAGE:-c}"
+read -rp "License (e.g. BSD-2-Clause, Apache-2.0): " LICENSE
+read -rp "Container registry namespace (e.g. registry.company.com/infra): " REGISTRY
+read -rp "Kubernetes namespace (e.g. infra, platform): " K8S_NS
+
+OUR_VERSION="${UPSTREAM_VERSION}-r1"
+
+echo ""
+echo "=== TRANSLATING SCRIPT FILES ==="
+echo "Translating .sh.txt → .sh and making executable..."
+
+# Translate all script files from .txt to original extensions
+find "${ROOT_DIR}" -name "*.sh.txt" | while read -r f; do
+  target="${f%.txt}"
+  cp "$f" "$target"
+  chmod +x "$target"
+  echo "  ✓ $(basename "$target")"
+done
+
+find "${ROOT_DIR}" -name "*.py.txt" | while read -r f; do
+  target="${f%.txt}"
+  cp "$f" "$target"
+  chmod +x "$target"
+  echo "  ✓ $(basename "$target")"
+done
+
+find "${ROOT_DIR}" -name "*.bat.txt" | while read -r f; do
+  target="${f%.txt}"
+  cp "$f" "$target"
+  echo "  ✓ $(basename "$target")"
+done
+
+echo ""
+echo "=== UPDATING package.json ==="
+cat > "${ROOT_DIR}/package.json" <<EOF
+{
+  "name": "${PROJECT_NAME}-fork",
+  "version": "${OUR_VERSION}",
+  "description": "Managed fork of ${PROJECT_NAME} with CVE security patches",
+  "upstream": {
+    "name": "${PROJECT_NAME}",
+    "version": "${UPSTREAM_VERSION}",
+    "archiveUrl": "${ARCHIVE_URL}",
+    "archiveFormat": "${ARCHIVE_FORMAT}",
+    "sha256": "${SHA256}",
+    "gpgUrl": "${GPG_URL}",
+    "language": "${LANGUAGE}",
+    "license": "${LICENSE}"
+  },
+  "registry": "${REGISTRY}",
+  "k8sNamespace": "${K8S_NS}",
+  "scripts": {
+    "build": "BUILD_STRATEGY=source ./build.sh",
+    "build:binary": "BUILD_STRATEGY=binary ./build.sh",
+    "build:both": "./build.sh --both",
+    "scan": "./build.sh --scan",
+    "release": "./build.sh --release",
+    "docs": "docker compose -f docker-compose.docs.yml up",
+    "init": "./init.sh"
+  }
+}
+EOF
+
+echo "=== CREATING INITIAL CHANGELOG ==="
+cat > "${ROOT_DIR}/CHANGELOG.md" <<EOF
+# Changelog
+
+All notable changes to this project will be documented in this file.
+Format: \`{upstream_version}-r{N}\` — see [constitution](CLAUDE.md#article-iii--versioning-convention).
+
+## [${OUR_VERSION}] - $(date +%Y-%m-%d)
+### Initial
+- Forked from upstream ${PROJECT_NAME} ${UPSTREAM_VERSION}
+- Source: ${ARCHIVE_URL}
+- SHA256: ${SHA256}
+- Build strategy: source
+EOF
+
+echo "=== CREATING INITIAL RELEASE BRANCH ==="
+git checkout -b "release/${OUR_VERSION}"
+git add .
+git commit -m "chore: initial onboard of ${PROJECT_NAME} ${UPSTREAM_VERSION}"
+
+echo ""
+echo "==================================================="
+echo " Onboarding complete!"
+echo " Project: ${PROJECT_NAME} ${OUR_VERSION}"
+echo " Branch:  release/${OUR_VERSION}"
+echo ""
+echo " Next steps:"
+echo "   1. Update Dockerfile with project-specific build commands"
+echo "   2. Run: ./build.sh to verify source build"
+echo "   3. Run: ./build.sh --scan to run all security scans"
+echo "   4. Check docs: docker compose -f docker-compose.docs.yml up"
+echo "==================================================="

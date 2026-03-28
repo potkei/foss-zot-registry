@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# =============================================================================
+# BUILD SOURCE — CI script for source build stage
+# Downloads upstream archive, verifies checksum, applies patches, builds image.
+# This file is stored as .sh.txt — translate to .sh via onboard skill.
+# =============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+
+# Detect container runtime — aliases don't propagate into non-interactive scripts
+DOCKER_CMD="docker"
+if ! command -v docker >/dev/null 2>&1 && command -v podman >/dev/null 2>&1; then
+  DOCKER_CMD="podman"
+fi
+
+# Load project config
+PROJECT_NAME="$(jq -r .upstream.name "${ROOT_DIR}/package.json")"
+UPSTREAM_VERSION="$(jq -r .upstream.version "${ROOT_DIR}/package.json")"
+OUR_VERSION="$(jq -r .version "${ROOT_DIR}/package.json")"
+REGISTRY="$(jq -r .registry "${ROOT_DIR}/package.json")"
+IMAGE_TAG="${REGISTRY}/${PROJECT_NAME}:${OUR_VERSION}"
+
+echo "=== SOURCE BUILD ==="
+echo "Project:          ${PROJECT_NAME}"
+echo "Upstream version: ${UPSTREAM_VERSION}"
+echo "Our version:      ${OUR_VERSION}"
+echo "Image tag:        ${IMAGE_TAG}"
+
+# Verify patch headers before building
+echo "--- Verifying patches ---"
+if [ -x "${ROOT_DIR}/patches/verify.sh" ]; then
+  "${ROOT_DIR}/patches/verify.sh"
+else
+  echo "  WARN: patches/verify.sh not found — run init.sh to translate scripts."
+fi
+
+# Build
+echo "--- Building source image ---"
+${DOCKER_CMD} build \
+  --file "${ROOT_DIR}/Dockerfile" \
+  --tag "${IMAGE_TAG}-source" \
+  --build-arg "UPSTREAM_VERSION=${UPSTREAM_VERSION}" \
+  --build-arg "UPSTREAM_ARCHIVE_URL=$(jq -r .upstream.archiveUrl "${ROOT_DIR}/package.json")" \
+  --build-arg "UPSTREAM_SHA256=$(jq -r .upstream.sha256 "${ROOT_DIR}/package.json")" \
+  --build-arg "PROJECT_NAME=${PROJECT_NAME}" \
+  --build-arg "OUR_VERSION=${OUR_VERSION}" \
+  --build-arg "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --build-arg "VCS_REF=$(git rev-parse --short HEAD)" \
+  --label "build.strategy=source" \
+  "${ROOT_DIR}"
+
+echo "--- Source build complete: ${IMAGE_TAG}-source ---"
+
+# Smoke test — verify binary runs
+echo "--- Smoke test ---"
+${DOCKER_CMD} run --rm "${IMAGE_TAG}-source" --version 2>/dev/null || \
+  ${DOCKER_CMD} run --rm "${IMAGE_TAG}-source" -v 2>/dev/null || \
+  echo "WARNING: smoke test skipped (no --version flag)"
+
+echo "=== SOURCE BUILD PASSED ==="

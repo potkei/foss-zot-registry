@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# =============================================================================
+# DEPENDENCY SCAN — OWASP Dependency-Check
+# This file is stored as .sh.txt — translate to .sh via onboard skill.
+# =============================================================================
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+source "${ROOT_DIR}/.cicd/scan-versions.env"
+
+PROJECT_NAME="$(jq -r .upstream.name "${ROOT_DIR}/package.json")"
+mkdir -p "${ROOT_DIR}/reports"
+
+# Load NVD API key if present
+NVD_API_KEY=""
+if [ -f "${ROOT_DIR}/.cicd/docker-resources/secrets/nvd.env" ]; then
+  source "${ROOT_DIR}/.cicd/docker-resources/secrets/nvd.env"
+fi
+
+echo "=== DEPENDENCY SCAN (OWASP ${OWASP_DC_VERSION}) ==="
+[ -n "${NVD_API_KEY:-}" ] && echo "NVD API key: present" || echo "NVD API key: NOT SET — update may be rate-limited"
+
+NVD_ARGS=()
+[ -n "${NVD_API_KEY:-}" ] && NVD_ARGS=(--nvdApiKey "${NVD_API_KEY}")
+
+docker run --rm \
+  -v "${ROOT_DIR}":/src \
+  -v owasp_dc_data:/usr/share/dependency-check/data \
+  -v "${ROOT_DIR}/reports":/report \
+  "owasp/dependency-check:${OWASP_DC_VERSION}" \
+  --scan /src \
+  --format HTML \
+  --format JSON \
+  --out /report \
+  --project "${PROJECT_NAME}-fork" \
+  "${NVD_ARGS[@]+"${NVD_ARGS[@]}"}"
+
+echo "Reports: reports/dependency-check-report.html"
+echo "         reports/dependency-check-report.json"
+echo "=== DEPENDENCY SCAN COMPLETE ==="

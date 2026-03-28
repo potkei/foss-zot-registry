@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# =============================================================================
+# VERIFY PATCHES — Checks all .patch files in patches/ apply cleanly
+# Called by build-source.sh before every build.
+# This file is stored as .sh.txt — translated to .sh by init.sh.
+# =============================================================================
+set -euo pipefail
+
+PATCHES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+patch_files=()
+while IFS= read -r f; do
+  patch_files+=("$f")
+done < <(find "${PATCHES_DIR}" -maxdepth 1 -name "*.patch" | sort)
+
+if [ "${#patch_files[@]}" -eq 0 ]; then
+  echo "  No patches to verify."
+  exit 0
+fi
+
+echo "  Found ${#patch_files[@]} patch(es) — verifying headers:"
+FAIL=0
+for p in "${patch_files[@]}"; do
+  name="$(basename "$p")"
+  # Every patch must have a CVE header
+  if ! grep -q "^# CVE:" "$p"; then
+    echo "  FAIL: ${name} — missing '# CVE:' header"
+    FAIL=1
+  else
+    cve="$(grep '^# CVE:' "$p" | awk '{print $3}')"
+    echo "  OK:   ${name} (${cve})"
+  fi
+done
+
+if [ "$FAIL" -ne 0 ]; then
+  echo "ERROR: One or more patches are missing required headers."
+  echo "       See docs/operations/cve-patching.md for the required format."
+  exit 1
+fi
+
+echo "  All patch headers valid."

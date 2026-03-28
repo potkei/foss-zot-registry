@@ -1,0 +1,65 @@
+# =============================================================================
+# FOSS Boilerplate — .gitignore
+# =============================================================================
+
+# Reports — scan output (regenerated on every run)
+reports/
+!reports/.gitkeep
+
+# Secrets — mount-only, never committed
+.cicd/docker-resources/secrets/*
+!.cicd/docker-resources/secrets/*.example
+
+# Docker / Build
+*.tar
+*.tar.gz
+*.tgz
+.docker/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Node (if applicable)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Go (if applicable)
+vendor/
+
+# Python (if applicable)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# MkDocs build output
+site/
+
+# Harbor config (generated at runtime)
+harbor-config/
+
+# Helm build artifacts
+helm/*.tgz
+
+# Trivy cache
+.trivy/
+
+# SonarQube working directory
+.scannerwork/
+
+# OS files
+Thumbs.db
+
+# Compiled local tools (built by init.sh)
+.tools/bin/jq
+.tools/bin/jq.exe
+
+# Root scripts — committed as .sh.txt, generated locally by renaming
+init.sh
+build.sh

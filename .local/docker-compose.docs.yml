@@ -1,0 +1,28 @@
+# =============================================================================
+# DOCUMENTATION — MkDocs with Material theme + Mermaid diagrams
+# Built from base Python using uv (see Dockerfile.docs)
+# Usage:
+#   docker compose -f .local/docker-compose.docs.yml up           # serve at http://localhost:8000
+#   docker compose -f .local/docker-compose.docs.yml run docs build  # build static site
+# =============================================================================
+
+name: foss-docs
+
+services:
+
+  docs:
+    build:
+      context: ..
+      dockerfile: .local/Dockerfile.docs
+      args:
+        MKDOCS_MATERIAL_VERSION: ${MKDOCS_MATERIAL_VERSION:-9.5.*}
+    image: foss-docs:local
+    pull_policy: missing
+    ports:
+      - "8000:8000"
+    volumes:
+      - ..:/docs
+    working_dir: /docs
+    command: serve --dev-addr=0.0.0.0:8000
+    environment:
+      ENABLE_GIT_REVISION_DATE: "true"

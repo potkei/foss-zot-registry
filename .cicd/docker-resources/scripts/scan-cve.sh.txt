@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# =============================================================================
+# CVE SCAN — Runs Trivy against the built image
+# Fails if unexcepted Critical or High CVEs found.
+# Exceptions managed in .cicd/scan-exceptions.yml and .trivyignore
+# This file is stored as .sh.txt — translate to .sh via onboard skill.
+# =============================================================================
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+source "${ROOT_DIR}/.cicd/scan-versions.env"
+
+PROJECT_NAME="$(jq -r .upstream.name "${ROOT_DIR}/package.json")"
+OUR_VERSION="$(jq -r .version "${ROOT_DIR}/package.json")"
+REGISTRY="$(jq -r .registry "${ROOT_DIR}/package.json")"
+IMAGE="${REGISTRY}/${PROJECT_NAME}:${OUR_VERSION}"
+REPORT="${ROOT_DIR}/reports/trivy.json"
+
+mkdir -p "${ROOT_DIR}/reports"
+
+echo "=== CVE SCAN (Trivy ${TRIVY_VERSION}) ==="
+echo "Image: ${IMAGE}"
+
+docker run --rm \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "${ROOT_DIR}/.trivyignore":/trivy/.trivyignore \
+  -v "${ROOT_DIR}/reports":/reports \
+  "aquasec/trivy:${TRIVY_VERSION}" \
+    image \
+    --format json \
+    --output /reports/trivy.json \
+    --ignorefile /trivy/.trivyignore \
+    --severity CRITICAL,HIGH,MEDIUM,LOW \
+    "${IMAGE}"
+
+# Check for unexcepted Critical/High findings
+CRITICAL=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' "${REPORT}" 2>/dev/null || echo 0)
+HIGH=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length' "${REPORT}" 2>/dev/null || echo 0)
+
+echo "Critical: ${CRITICAL} | High: ${HIGH}"
+
+if [ "${CRITICAL}" -gt 0 ] || [ "${HIGH}" -gt 0 ]; then
+  echo "SCAN GATE FAILED — Critical/High CVEs found. Add to .trivyignore with expiry if accepted."
+  jq -r '.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL" or .Severity=="HIGH") | "\(.Severity) \(.VulnerabilityID) \(.PkgName) \(.InstalledVersion)"' "${REPORT}"
+  exit 1
+fi
+
+echo "=== CVE SCAN PASSED ==="

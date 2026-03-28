@@ -1,0 +1,6 @@
+# =============================================================================
+# TRIVY IGNORE — Accepted CVE exceptions
+# Each entry must also be documented in .cicd/scan-exceptions.yml with
+# reason, accepted_by, expiry date, and ticket reference.
+# Entries here without a matching scan-exceptions.yml entry will be flagged.
+# =============================================================================

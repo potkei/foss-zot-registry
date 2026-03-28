@@ -1,0 +1,20 @@
+name: foss-boilerplate-test
+
+services:
+  test:
+    build:
+      context: ..
+      dockerfile: .local/Dockerfile.test
+    image: foss-boilerplate-test:local
+    pull_policy: missing
+    volumes:
+      - ..:/repo
+    working_dir: /repo
+    environment:
+      - GOPROXY=${GOPROXY:-direct}
+    # Build jsonq before running tests so test_jsonq.bats can find the binary
+    command: >
+      bash -c "
+        cd .tools/jsonq && go build -o ../bin/jq . &&
+        cd /repo && bats --recursive .tools/tests/
+      "

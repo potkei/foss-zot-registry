@@ -1,0 +1,22 @@
+# Test runner image — BATS + Go (for building jsonq) + bash tools
+# Used by: docker compose -f .local/docker-compose.test.yml run test
+FROM debian:12-slim
+
+ARG GO_VERSION=1.22.3
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      bats \
+      bash \
+      git \
+      curl \
+      ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Go for building jsonq inside the test container
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" \
+    | tar -C /usr/local -xz
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+WORKDIR /repo
+
+ENTRYPOINT ["bats", "--recursive", ".tools/tests/"]

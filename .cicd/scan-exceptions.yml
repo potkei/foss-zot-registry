@@ -1,0 +1,19 @@
+# =============================================================================
+# ACCEPTED SCAN EXCEPTIONS
+# Document all accepted CVE risks here. Each entry requires:
+#   - CVE ID, reason, accepted_by, expiry date, ticket reference
+# Entries past their expiry date will cause CI to fail.
+# =============================================================================
+
+exceptions: []
+
+# Example (uncomment and fill in):
+# exceptions:
+#   - cve: CVE-2024-9999
+#     tool: trivy
+#     reason: "Not applicable — vulnerable code path is not reachable in our usage"
+#     accepted_by: "security-team"
+#     accepted_date: "2026-03-25"
+#     expiry: "2026-06-25"
+#     ticket: "SEC-123"
+#     review_date: "2026-05-01"

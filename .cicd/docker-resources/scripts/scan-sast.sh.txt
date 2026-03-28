@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# =============================================================================
+# SAST SCAN — Semgrep and/or SonarQube
+# Usage: ./scan-sast.sh [--semgrep] [--sonar] [--all]
+# This file is stored as .sh.txt — translate to .sh via onboard skill.
+# =============================================================================
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+source "${ROOT_DIR}/.cicd/scan-versions.env"
+
+MODE="${1:---all}"
+mkdir -p "${ROOT_DIR}/reports"
+
+run_semgrep() {
+  echo "=== SEMGREP SAST ==="
+  docker run --rm \
+    -v "${ROOT_DIR}":/src \
+    "semgrep/semgrep:${SEMGREP_VERSION}" \
+    semgrep scan \
+      --config=auto \
+      --json \
+      --output=/src/reports/semgrep.json \
+      /src
+  echo "Semgrep report: reports/semgrep.json"
+}
+
+run_sonar() {
+  echo "=== SONARQUBE SAST ==="
+  if [ -z "${SONAR_TOKEN:-}" ] || [ -z "${SONAR_HOST_URL:-}" ]; then
+    echo "SONAR_TOKEN or SONAR_HOST_URL not set — skipping SonarQube"
+    return 0
+  fi
+  PROJECT_NAME="$(jq -r .upstream.name "${ROOT_DIR}/package.json")"
+  docker run --rm \
+    -v "${ROOT_DIR}":/usr/src \
+    -e SONAR_HOST_URL="${SONAR_HOST_URL}" \
+    -e SONAR_TOKEN="${SONAR_TOKEN}" \
+    "sonarsource/sonar-scanner-cli:${SONAR_SCANNER_VERSION}" \
+    sonar-scanner \
+      -Dsonar.projectKey="${PROJECT_NAME}-fork" \
+      -Dsonar.sources=.
+  echo "SonarQube: ${SONAR_HOST_URL}/dashboard?id=${PROJECT_NAME}-fork"
+}
+
+case "${MODE}" in
+  --semgrep) run_semgrep ;;
+  --sonar)   run_sonar ;;
+  --all|*)   run_semgrep; run_sonar ;;
+esac
+
+echo "=== SAST SCAN COMPLETE ==="

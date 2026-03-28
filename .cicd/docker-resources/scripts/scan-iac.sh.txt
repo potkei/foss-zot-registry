@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# =============================================================================
+# IaC SCAN — Hadolint (Dockerfile) + Checkov (Helm/IaC)
+# Usage: ./scan-iac.sh [--hadolint] [--checkov] [--all]
+# This file is stored as .sh.txt — translate to .sh via onboard skill.
+# =============================================================================
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+source "${ROOT_DIR}/.cicd/scan-versions.env"
+
+MODE="${1:---all}"
+mkdir -p "${ROOT_DIR}/reports"
+
+run_hadolint() {
+  echo "=== HADOLINT (Dockerfile lint) ==="
+  for df in Dockerfile Dockerfile.binary Dockerfile.go; do
+    if [ -f "${ROOT_DIR}/${df}" ]; then
+      echo "Linting ${df}..."
+      docker run --rm \
+        -v "${ROOT_DIR}":/src \
+        "hadolint/hadolint:${HADOLINT_VERSION}" \
+        hadolint "/src/${df}" --format json \
+        >> "${ROOT_DIR}/reports/hadolint.json" 2>&1 || true
+    fi
+  done
+  echo "Hadolint report: reports/hadolint.json"
+}
+
+run_checkov() {
+  echo "=== CHECKOV (IaC/Helm scan) ==="
+  docker run --rm \
+    -v "${ROOT_DIR}":/src \
+    "bridgecrew/checkov:${CHECKOV_VERSION}" \
+    --directory=/src \
+    --output=json \
+    --output-file=/src/reports/checkov.json \
+    --soft-fail
+  echo "Checkov report: reports/checkov.json"
+}
+
+case "${MODE}" in
+  --hadolint) run_hadolint ;;
+  --checkov)  run_checkov ;;
+  --all|*)    run_hadolint; run_checkov ;;
+esac
+
+echo "=== IaC SCAN COMPLETE ==="

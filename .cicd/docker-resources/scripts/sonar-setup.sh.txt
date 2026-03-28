@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# =============================================================================
+# SONAR SETUP — Auto-provisions local SonarQube project and generates token
+# Called by docker-compose.scan.yml sonar-setup service.
+# This file is stored as .sh.txt — translate to .sh via onboard skill.
+# =============================================================================
+set -euo pipefail
+
+SONAR_URL="${SONAR_HOST_URL:-http://sonarqube:9000}"
+PROJECT_KEY="${PROJECT_NAME:-foss-project}-fork"
+
+echo "Setting up SonarQube at ${SONAR_URL}..."
+
+# Change default admin password
+curl -sf -u admin:admin -X POST \
+  "${SONAR_URL}/api/users/change_password" \
+  -d "login=admin&previousPassword=admin&password=SonarLocal123!" \
+  || echo "Password already changed"
+
+# Create project
+curl -sf -u admin:SonarLocal123! -X POST \
+  "${SONAR_URL}/api/projects/create" \
+  -d "name=${PROJECT_KEY}&project=${PROJECT_KEY}" \
+  || echo "Project may already exist"
+
+# Generate token
+TOKEN=$(curl -sf -u admin:SonarLocal123! -X POST \
+  "${SONAR_URL}/api/user_tokens/generate" \
+  -d "name=local-scan-$(date +%s)" \
+  | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+echo "SONAR_TOKEN=${TOKEN}" > /sonar-token/token.env
+echo "SONAR_HOST_URL=${SONAR_URL}" >> /sonar-token/token.env
+echo "SonarQube ready. Project: ${PROJECT_KEY}"

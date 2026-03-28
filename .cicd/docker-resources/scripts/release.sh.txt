@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# =============================================================================
+# RELEASE — Tag, sign, generate SBOM, push image to registry
+# Run after scan gate passes on main branch.
+# This file is stored as .sh.txt — translate to .sh via onboard skill.
+# =============================================================================
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+source "${ROOT_DIR}/.cicd/scan-versions.env"
+
+PROJECT_NAME="$(jq -r .upstream.name "${ROOT_DIR}/package.json")"
+OUR_VERSION="$(jq -r .version "${ROOT_DIR}/package.json")"
+REGISTRY="$(jq -r .registry "${ROOT_DIR}/package.json")"
+IMAGE="${REGISTRY}/${PROJECT_NAME}:${OUR_VERSION}"
+SBOM_FILE="${ROOT_DIR}/reports/sbom-${OUR_VERSION}.cdx.json"
+
+mkdir -p "${ROOT_DIR}/reports"
+
+echo "=== RELEASE ${OUR_VERSION} ==="
+
+# Generate SBOM
+echo "--- Generating SBOM ---"
+docker run --rm \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "${ROOT_DIR}/reports":/reports \
+  "anchore/syft:${SYFT_VERSION}" \
+  packages "${IMAGE}" \
+  -o cyclonedx-json \
+  --file "/reports/sbom-${OUR_VERSION}.cdx.json"
+
+# Sign image
+echo "--- Signing image ---"
+if [ -n "${COSIGN_KEY:-}" ]; then
+  cosign sign --key "${COSIGN_KEY}" "${IMAGE}"
+else
+  echo "COSIGN_KEY not set — skipping signing (set in CI credentials)"
+fi
+
+# Attach SBOM attestation
+echo "--- Attaching SBOM attestation ---"
+if [ -n "${COSIGN_KEY:-}" ]; then
+  cosign attest \
+    --key "${COSIGN_KEY}" \
+    --predicate "${SBOM_FILE}" \
+    --type cyclonedx \
+    "${IMAGE}"
+fi
+
+# Push to registry
+echo "--- Pushing image ---"
+docker push "${IMAGE}"
+
+# Update build.lock
+echo "--- Updating build.lock ---"
+cat > "${ROOT_DIR}/build.lock" <<EOF
+upstream_version=$(jq -r .upstream.version "${ROOT_DIR}/package.json")
+our_version=${OUR_VERSION}
+archive_url=$(jq -r .upstream.archiveUrl "${ROOT_DIR}/package.json")
+archive_sha256=$(jq -r .upstream.sha256 "${ROOT_DIR}/package.json")
+patches_applied=$(ls "${ROOT_DIR}/patches"/*.patch 2>/dev/null | xargs -I{} basename {} | tr '\n' ' ' || echo "none")
+base_image=$(grep "^FROM" "${ROOT_DIR}/Dockerfile" | tail -1 | awk '{print $2}')
+build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+build_strategy=$(jq -r '.scripts.build' "${ROOT_DIR}/package.json" | grep -o 'source\|binary' || echo source)
+sbom=reports/sbom-${OUR_VERSION}.cdx.json
+EOF
+
+echo "=== RELEASE ${OUR_VERSION} COMPLETE ==="

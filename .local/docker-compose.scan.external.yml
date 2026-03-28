@@ -1,0 +1,141 @@
+# =============================================================================
+# EXTERNAL SCAN — Connect to existing SonarQube server via token
+# Auto-detected when SONAR_TOKEN and SONAR_HOST_URL are set.
+# Usage:
+#   SONAR_HOST_URL=https://sonar.company.com \
+#   SONAR_TOKEN=sqp_xxxx \
+#   docker compose -f .local/docker-compose.scan.external.yml up --abort-on-container-exit
+#
+# Or load from secrets file:
+#   source .cicd/docker-resources/secrets/sonar.env
+#   docker compose -f .local/docker-compose.scan.external.yml up
+# =============================================================================
+
+name: foss-scan-external
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # SonarQube scanner — connects to external server
+  # ---------------------------------------------------------------------------
+  sonar-scanner:
+    image: sonarsource/sonar-scanner-cli:${SONAR_SCANNER_VERSION:-latest}
+    pull_policy: missing
+    volumes:
+      - ..:/usr/src
+    environment:
+      SONAR_HOST_URL: ${SONAR_HOST_URL}
+      SONAR_TOKEN: ${SONAR_TOKEN}
+    command:
+      - sonar-scanner
+      - -Dsonar.projectKey=${PROJECT_NAME:-foss-project}-fork
+      - -Dsonar.sources=.
+
+  # ---------------------------------------------------------------------------
+  # Trivy — container CVE scan
+  # ---------------------------------------------------------------------------
+  trivy:
+    image: aquasec/trivy:${TRIVY_VERSION:-latest}
+    pull_policy: missing
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - trivy_cache:/root/.cache/trivy
+      - ../reports:/reports
+    environment:
+      IMAGE_NAME: ${IMAGE_REGISTRY:-localhost}/${PROJECT_NAME:-foss-project}:${OUR_VERSION:-dev}
+    command:
+      - image
+      - --format=json
+      - --output=/reports/trivy.json
+      - --ignorefile=/reports/../.trivyignore
+      - "$$IMAGE_NAME"
+
+  # ---------------------------------------------------------------------------
+  # Semgrep SAST
+  # ---------------------------------------------------------------------------
+  semgrep:
+    build:
+      context: ..
+      dockerfile: .local/Dockerfile.semgrep
+      args:
+        SEMGREP_VERSION: ${SEMGREP_VERSION:-1.*}
+    image: foss-semgrep:local
+    pull_policy: missing
+    volumes:
+      - ..:/src
+    working_dir: /src
+    command:
+      - semgrep
+      - scan
+      - --config=auto
+      - --json
+      - --output=/src/reports/semgrep.json
+
+  # ---------------------------------------------------------------------------
+  # OWASP Dependency-Check
+  # ---------------------------------------------------------------------------
+  dependency-check:
+    image: owasp/dependency-check:${OWASP_DC_VERSION:-latest}
+    pull_policy: missing
+    volumes:
+      - ..:/src
+      - dependency_check_data:/usr/share/dependency-check/data
+      - ../reports:/report
+    command:
+      - --scan=/src
+      - --format=HTML
+      - --format=JSON
+      - --out=/report
+      - --project=${PROJECT_NAME:-foss-project}
+
+  # ---------------------------------------------------------------------------
+  # Gitleaks
+  # ---------------------------------------------------------------------------
+  gitleaks:
+    image: zricethezav/gitleaks:${GITLEAKS_VERSION:-latest}
+    pull_policy: missing
+    volumes:
+      - ..:/src
+    command:
+      - detect
+      - --source=/src
+      - --report-format=json
+      - --report-path=/src/reports/gitleaks.json
+
+  # ---------------------------------------------------------------------------
+  # Hadolint
+  # ---------------------------------------------------------------------------
+  hadolint:
+    image: hadolint/hadolint:${HADOLINT_VERSION:-latest}
+    pull_policy: missing
+    volumes:
+      - ..:/src
+      - ../reports:/reports
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "hadolint /src/Dockerfile /src/Dockerfile.binary /src/Dockerfile.go \
+         --format json > /reports/hadolint.json 2>&1"
+
+  # ---------------------------------------------------------------------------
+  # Checkov
+  # ---------------------------------------------------------------------------
+  checkov:
+    build:
+      context: ..
+      dockerfile: .local/Dockerfile.checkov
+      args:
+        CHECKOV_VERSION: ${CHECKOV_VERSION:-3.*}
+    image: foss-checkov:local
+    pull_policy: missing
+    volumes:
+      - ..:/src
+      - ../reports:/reports
+    command:
+      - --directory=/src
+      - --output=json
+      - --output-file=/reports/checkov.json
+      - --soft-fail
+
+volumes:
+  trivy_cache:
+  dependency_check_data:

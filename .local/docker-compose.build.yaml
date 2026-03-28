@@ -1,0 +1,82 @@
+# =============================================================================
+# LOCAL BUILD — For local development before CI
+# Requires DOCKER_BUILDKIT=1 (default in Docker 23+) for cache mounts.
+# Usage:
+#   BUILD_STRATEGY=source docker compose -f docker-compose.build.yaml build
+#   BUILD_STRATEGY=binary docker compose -f docker-compose.build.yaml build app-binary
+#   docker compose -f docker-compose.build.yaml build  # defaults to source
+#
+# Cache strategy:
+#   BuildKit --mount=type=cache inside each Dockerfile persists downloads
+#   (apt, Go modules, Maven, pip, npm, etc.) across builds. This does NOT
+#   bypass SHA256/GPG verification — checksums are always checked.
+#   To force a clean build: docker compose build --no-cache
+#
+# Container runtime compatibility:
+#   Docker 23+       — full BuildKit cache mount support (default)
+#   Podman 4.2+      — partial cache mount support via Buildah
+#   Podman <4.2      — cache directives ignored; builds work but re-download
+# =============================================================================
+
+name: foss-build
+
+x-common-args: &common-args
+  UPSTREAM_VERSION: ${UPSTREAM_VERSION:-REPLACE_ME}
+  UPSTREAM_ARCHIVE_URL: ${UPSTREAM_ARCHIVE_URL:-REPLACE_ME}
+  UPSTREAM_SHA256: ${UPSTREAM_SHA256:-REPLACE_ME}
+  UPSTREAM_GPG_URL: ${UPSTREAM_GPG_URL:-}
+  PROJECT_NAME: ${PROJECT_NAME:-REPLACE_ME}
+  BUILD_DATE: ${BUILD_DATE:-}
+  VCS_REF: ${VCS_REF:-}
+  OUR_VERSION: ${OUR_VERSION:-REPLACE_ME}
+  BASE_IMAGE: ${BASE_IMAGE:-ubuntu:22.04}
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Source build — PRIORITY (C/C++, Java, Python, Node, Rust, etc.)
+  # BuildKit cache mounts in the Dockerfile handle dependency caching.
+  # ---------------------------------------------------------------------------
+  app-source:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        <<: *common-args
+    image: ${IMAGE_REGISTRY:-localhost:5000}/${PROJECT_NAME:-foss-project}:${OUR_VERSION:-dev}-source
+    profiles:
+      - source
+      - all
+
+  # ---------------------------------------------------------------------------
+  # Go source build — for Go projects
+  # BuildKit caches Go modules (/go/pkg/mod) and build cache in Dockerfile.
+  # ---------------------------------------------------------------------------
+  app-source-go:
+    build:
+      context: ..
+      dockerfile: Dockerfile.go
+      args:
+        <<: *common-args
+        GO_VERSION: ${GO_VERSION:-1.22}
+    image: ${IMAGE_REGISTRY:-localhost:5000}/${PROJECT_NAME:-foss-project}:${OUR_VERSION:-dev}-source-go
+    profiles:
+      - source-go
+      - all
+
+  # ---------------------------------------------------------------------------
+  # Binary fallback — REQUIRES tech lead approval to use
+  # ---------------------------------------------------------------------------
+  app-binary:
+    build:
+      context: ..
+      dockerfile: Dockerfile.binary
+      args:
+        <<: *common-args
+        BINARY_URL: ${BINARY_URL:-REPLACE_ME}
+        BINARY_SHA256: ${BINARY_SHA256:-REPLACE_ME}
+        BINARY_GPG_URL: ${BINARY_GPG_URL:-}
+    image: ${IMAGE_REGISTRY:-localhost:5000}/${PROJECT_NAME:-foss-project}:${OUR_VERSION:-dev}-binary
+    profiles:
+      - binary
+      - all

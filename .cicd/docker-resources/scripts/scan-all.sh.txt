@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# =============================================================================
+# SCAN ALL — Run all scans and produce consolidated report
+# Auto-detects local vs external SonarQube mode.
+# Usage: ./scan-all.sh [--sast] [--cve] [--deps] [--secrets] [--iac]
+# This file is stored as .sh.txt — translate to .sh via onboard skill.
+# =============================================================================
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+SCRIPTS="${ROOT_DIR}/.cicd/docker-resources/scripts"
+
+SCAN_SAST=true
+SCAN_CVE=true
+SCAN_DEPS=true
+SCAN_SECRETS=true
+SCAN_IAC=true
+
+# Parse flags
+if [ $# -gt 0 ]; then
+  SCAN_SAST=false; SCAN_CVE=false; SCAN_DEPS=false; SCAN_SECRETS=false; SCAN_IAC=false
+  for arg in "$@"; do
+    case "$arg" in
+      --sast)    SCAN_SAST=true ;;
+      --cve)     SCAN_CVE=true ;;
+      --deps)    SCAN_DEPS=true ;;
+      --secrets) SCAN_SECRETS=true ;;
+      --iac)     SCAN_IAC=true ;;
+    esac
+  done
+fi
+
+# Determine SonarQube mode
+if [ -n "${SONAR_TOKEN:-}" ] && [ -n "${SONAR_HOST_URL:-}" ]; then
+  echo "SonarQube mode: EXTERNAL (${SONAR_HOST_URL})"
+  COMPOSE_SCAN="docker-compose.scan.external.yml"
+else
+  echo "SonarQube mode: LOCAL (spinning up stack)"
+  COMPOSE_SCAN="docker-compose.scan.yml"
+fi
+
+mkdir -p "${ROOT_DIR}/reports"
+echo "SCAN STARTED: $(date -u)" > "${ROOT_DIR}/reports/scan-summary.txt"
+
+FAILED=()
+
+run_scan() {
+  local name="$1"; local cmd="$2"
+  echo "--- Running: ${name} ---"
+  if eval "${cmd}"; then
+    echo "PASS  ${name}" >> "${ROOT_DIR}/reports/scan-summary.txt"
+  else
+    echo "FAIL  ${name}" >> "${ROOT_DIR}/reports/scan-summary.txt"
+    FAILED+=("${name}")
+  fi
+}
+
+$SCAN_IAC     && run_scan "hadolint+checkov" "${SCRIPTS}/scan-iac.sh"
+$SCAN_SAST    && run_scan "semgrep+sonar"    "${SCRIPTS}/scan-sast.sh"
+$SCAN_CVE     && run_scan "trivy"            "${SCRIPTS}/scan-cve.sh"
+$SCAN_DEPS    && run_scan "owasp-dc"         "${SCRIPTS}/scan-dependencies.sh"
+$SCAN_SECRETS && run_scan "gitleaks"         "${SCRIPTS}/scan-secrets.sh"
+
+echo ""
+echo "=========================="
+echo "SCAN SUMMARY"
+echo "=========================="
+cat "${ROOT_DIR}/reports/scan-summary.txt"
+
+if [ ${#FAILED[@]} -gt 0 ]; then
+  echo ""
+  echo "FAILED: ${FAILED[*]}"
+  echo "Reports in: ${ROOT_DIR}/reports/"
+  exit 1
+fi
+
+echo "ALL SCANS PASSED"

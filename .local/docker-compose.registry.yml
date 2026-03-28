@@ -1,0 +1,49 @@
+# =============================================================================
+# LOCAL REGISTRY — OCI-compatible image storage for local dev
+#
+# registry:2  → stores images          → localhost:5000
+# registry-ui → browse images in browser → http://localhost:5001
+#
+# Usage:
+#   make registry-up          # start registry + UI
+#   make push-local           # build and push to localhost:5000
+#   make registry-down        # stop
+#
+# Push manually:
+#   podman push --tls-verify=false localhost:5000/<project>:<tag>
+#
+# NOTE: For staging/prod use Harbor via its official installer (.deploy/).
+#       This registry is for local dev only — data lives in a named volume.
+# =============================================================================
+
+name: foss-registry
+
+services:
+
+  registry:
+    image: registry:2
+    pull_policy: missing
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - registry_data:/var/lib/registry
+    environment:
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+
+  registry-ui:
+    image: joxit/docker-registry-ui:latest
+    pull_policy: missing
+    restart: unless-stopped
+    ports:
+      - "5001:80"
+    environment:
+      REGISTRY_TITLE: "Local FOSS Registry"
+      REGISTRY_URL: http://registry:5000
+      SINGLE_REGISTRY: "true"
+      DELETE_IMAGES: "true"
+    depends_on:
+      - registry
+
+volumes:
+  registry_data:
