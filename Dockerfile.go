@@ -145,6 +145,8 @@ LABEL org.opencontainers.image.title="${PROJECT_NAME} (Go patched fork)" \
 
 COPY --from=builder /install/${PROJECT_NAME} /usr/local/bin/${PROJECT_NAME}
 COPY --from=builder /install/config.json /etc/zot/config.json
+# Apache-2.0 compliance: NOTICE file must be included in all distributions
+COPY --from=builder /build/source/NOTICE /NOTICE
 
 USER nonroot:nonroot
 
