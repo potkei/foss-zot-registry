@@ -7,8 +7,15 @@ Versioning follows `{upstream_version}-r{N}` (see CLAUDE.md Article III).
 
 ## [Unreleased]
 
-### Added
-- Initial boilerplate template setup
+## [2.1.15-r1] - 2026-03-28
+
+### Initial
+- Forked from upstream zot 2.1.15
+- Source: https://github.com/project-zot/zot/archive/refs/tags/v2.1.15.tar.gz
+- SHA256: 183525bc4ffdf031c6c7e40a013f888f3a1f9a7acc149baa01cd6adc00f59b23 (computed locally — verify against a second trusted source)
+- License: Apache-2.0
+- Build strategy: source (Go 1.25.7, `make binary` with embedded UI via zui commit-111cb8e)
+- No CVE patches applied at initial onboard
 
 <!-- =======================================================================
 Release entry template — copy and fill in for each release:

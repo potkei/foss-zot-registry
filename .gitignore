@@ -60,6 +60,8 @@ Thumbs.db
 .tools/bin/jq
 .tools/bin/jq.exe
 
-# Root scripts — committed as .sh.txt, generated locally by renaming
+# Scripts — committed as .sh.txt, generated locally by renaming
 init.sh
 build.sh
+patches/verify.sh
+.cicd/docker-resources/scripts/*.sh
