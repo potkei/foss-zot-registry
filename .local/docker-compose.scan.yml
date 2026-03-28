@@ -118,17 +118,20 @@ services:
   trivy:
     image: aquasec/trivy:${TRIVY_VERSION:-latest}
     pull_policy: missing
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - trivy_cache:/root/.cache/trivy
       - ../reports:/reports
     environment:
-      IMAGE_NAME: ${IMAGE_REGISTRY:-localhost}/${PROJECT_NAME:-foss-project}:${OUR_VERSION:-dev}
+      IMAGE_NAME: ${IMAGE_REGISTRY:-localhost:5050}/${PROJECT_NAME:-foss-project}:${OUR_VERSION:-dev}
     command:
       - image
       - --format=json
       - --output=/reports/trivy.json
       - --ignorefile=/reports/../.trivyignore
+      - --insecure
       - "$$IMAGE_NAME"
 
   # ---------------------------------------------------------------------------
