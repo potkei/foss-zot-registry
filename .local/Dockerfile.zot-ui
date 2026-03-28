@@ -1,0 +1,37 @@
+# =============================================================================
+# ZOT FULL — OCI-native local registry with extensions (UI, search)
+# Source: https://github.com/project-zot/zot
+#
+# NOTE: Pinned to Go 1.26.1 (not go.mod's 1.25.7) — Go 1.25.x has a CVE
+#       affecting stdout handling. Go is backwards-compatible so Zot builds cleanly.
+#
+# Runtime: distroless/static (no shell, includes CA certs + tzdata)
+# Browser UI available at http://localhost:5000/ui
+# =============================================================================
+
+ARG GO_VERSION=1.26.1
+ARG ZOT_VERSION=v2.1.15
+
+# Stage 1: build
+FROM golang:${GO_VERSION}-alpine AS builder
+
+ARG ZOT_VERSION
+
+RUN apk add --no-cache git make nodejs npm && \
+    git clone --depth 1 --branch ${ZOT_VERSION} \
+      https://github.com/project-zot/zot /src
+
+WORKDIR /src
+
+RUN CGO_ENABLED=0 GOEXPERIMENT=jsonv2 make binary BUILD_LABELS=ui,search,mgmt,userprefs && \
+    cp bin/zot-* /go/bin/zot
+
+# Stage 2: runtime — distroless/static (includes CA certs, no shell)
+FROM gcr.io/distroless/static:nonroot
+
+COPY --from=builder /go/bin/zot /zot
+
+EXPOSE 5000
+
+ENTRYPOINT ["/zot"]
+CMD ["serve", "/etc/zot/config.json"]

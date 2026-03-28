@@ -1,11 +1,15 @@
 # =============================================================================
-# LOCAL REGISTRY — OCI-compatible image storage for local dev
+# LOCAL REGISTRY — OCI-native image storage for local dev (Zot)
 #
-# registry:2  → stores images          → localhost:5000
-# registry-ui → browse images in browser → http://localhost:5001
+# Two variants — swap the active service to choose:
+#
+#   registry-minimal  → push/pull only, scratch runtime, no UI      → localhost:5050
+#   registry-ui       → push/pull + browser UI at http://localhost:5050/ui → localhost:5050
+#
+# NOTE: Port 5000 is reserved by macOS AirPlay Receiver — host port is 5050.
 #
 # Usage:
-#   make registry-up          # start registry + UI
+#   make registry-up          # start registry (default: ui variant)
 #   make push-local           # build and push to localhost:5000
 #   make registry-down        # stop
 #
@@ -20,30 +24,35 @@ name: foss-registry
 
 services:
 
-  registry:
-    image: registry:2
+  # --- Minimal: no UI, scratch runtime ---
+  registry-minimal:
+    build:
+      context: .
+      dockerfile: Dockerfile.zot
+    image: foss-registry/zot-minimal:v2.1.15
     pull_policy: missing
+    profiles: ["minimal"]
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "5050:5000"
     volumes:
       - registry_data:/var/lib/registry
-    environment:
-      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+      - ./zot-config.json:/etc/zot/config.json:ro
 
+  # --- Full: with UI + search extensions, distroless runtime ---
   registry-ui:
-    image: joxit/docker-registry-ui:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.zot-ui
+    image: foss-registry/zot-ui:v2.1.15
     pull_policy: missing
+    profiles: ["ui"]
     restart: unless-stopped
     ports:
-      - "5001:80"
-    environment:
-      REGISTRY_TITLE: "Local FOSS Registry"
-      REGISTRY_URL: http://registry:5000
-      SINGLE_REGISTRY: "true"
-      DELETE_IMAGES: "true"
-    depends_on:
-      - registry
+      - "5050:5000"
+    volumes:
+      - registry_data:/var/lib/registry
+      - ./zot-config-ui.json:/etc/zot/config.json:ro
 
 volumes:
   registry_data:

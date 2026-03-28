@@ -1,0 +1,41 @@
+# =============================================================================
+# ZOT MINIMAL — OCI-native local registry, no extensions
+# Source: https://github.com/project-zot/zot
+#
+# NOTE: Pinned to Go 1.26.1 (not go.mod's 1.25.7) — Go 1.25.x has a CVE
+#       affecting stdout handling. Go is backwards-compatible so Zot builds cleanly.
+#
+# Runtime: scratch (pure binary, no shell, no OS)
+# Use this when you only need push/pull and no browser UI.
+# =============================================================================
+
+ARG GO_VERSION=1.26.1
+ARG ZOT_VERSION=v2.1.15
+
+# Stage 1: build
+FROM golang:${GO_VERSION}-alpine AS builder
+
+ARG ZOT_VERSION
+
+RUN apk add --no-cache git && \
+    git clone --depth 1 --branch ${ZOT_VERSION} \
+      https://github.com/project-zot/zot /src
+
+WORKDIR /src
+
+RUN CGO_ENABLED=0 GOEXPERIMENT=jsonv2 go build \
+      -o /go/bin/zot \
+      -trimpath \
+      -ldflags "-s -w" \
+      ./cmd/zot
+
+# Stage 2: runtime — scratch for minimal attack surface
+FROM scratch
+
+COPY --from=builder /go/bin/zot /zot
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+EXPOSE 5000
+
+ENTRYPOINT ["/zot"]
+CMD ["serve", "/etc/zot/config.json"]
