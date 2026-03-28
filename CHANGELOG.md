@@ -7,6 +7,21 @@ Versioning follows `{upstream_version}-r{N}` (see CLAUDE.md Article III).
 
 ## [Unreleased]
 
+## [2.1.15-r2] - 2026-03-28
+
+### Security
+- **CVE-2026-33186** (CVSS 9.1 Critical): gRPC-Go authorization bypass via missing leading slash in `:path` header
+  - Patch: `patches/0001-CVE-2026-33186-gomod-bump-grpc.patch`
+  - Fix: `google.golang.org/grpc` bumped v1.79.0 → v1.79.3
+  - Upstream: fixed-in-1.79.3
+- **CVE-2026-0861** (CVSS 8.1 High): glibc integer overflow in memalign leading to heap corruption (`libc6`)
+  - No upstream fix available as of 2026-03-28
+  - Accepted in `.trivyignore` — expiry 2026-09-28, owner: security-team
+  - Revisit when debian12 ships patched libc6
+
+### Build Strategy
+- `source` (default)
+
 ## [2.1.15-r1] - 2026-03-28
 
 ### Initial
