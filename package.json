@@ -1,0 +1,27 @@
+{
+  "name": "zot-fork",
+  "version": "2.1.15-r2",
+  "upstream": {
+    "name": "zot",
+    "version": "2.1.15",
+    "archiveUrl": "https://github.com/project-zot/zot/archive/refs/tags/v2.1.15.tar.gz",
+    "archiveFormat": "tar.gz",
+    "sha256": "183525bc4ffdf031c6c7e40a013f888f3a1f9a7acc149baa01cd6adc00f59b23",
+    "gpgUrl": null,
+    "language": "Go",
+    "buildTool": "make binary (GOEXPERIMENT=jsonv2, go:embed for UI assets via zui commit-111cb8e)",
+    "license": "Apache-2.0"
+  },
+  "registry": "local",
+  "k8sNamespace": "platform",
+  "patches": [
+    {
+      "cve": "CVE-2026-33186",
+      "severity": "Critical",
+      "cvss": 9.1,
+      "file": "patches/0001-CVE-2026-33186-gomod-bump-grpc.patch",
+      "description": "gRPC-Go authorization bypass — bump google.golang.org/grpc v1.79.0 → v1.79.3",
+      "upstreamFix": "1.79.3"
+    }
+  ]
+}

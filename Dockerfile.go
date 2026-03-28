@@ -5,19 +5,28 @@
 # Handles go.mod patches and go.sum regeneration automatically.
 # BuildKit cache mounts persist Go module + build caches across builds.
 #
+# zot build notes:
+#   - Uses `make binary` which embeds pre-built ZUI assets from GitHub
+#     (ZUI_VERSION=commit-111cb8e → https://github.com/project-zot/zui/releases)
+#   - Builder stage requires outbound internet access for ZUI asset download
+#   - Binary output: bin/zot-linux-amd64
+#   - Port: 5000
+#
+# Go version probe: go.mod requires 1.25.7 → using golang:1.25.7-bookworm
+#
 # Container runtime compatibility:
 #   Docker 23+ (BuildKit default)  — full cache mount support
 #   Podman 4.2+ / Buildah 1.28+   — partial cache mount support
 #   Podman <4.2                    — cache directives ignored, builds still work
 # =============================================================================
 
-ARG BASE_IMAGE=ubuntu:22.04
-ARG GO_VERSION=1.22
-ARG UPSTREAM_VERSION=REPLACE_ME
-ARG UPSTREAM_ARCHIVE_URL=REPLACE_ME
-ARG UPSTREAM_SHA256=REPLACE_ME
+ARG BASE_IMAGE=gcr.io/distroless/base-nossl-debian12:nonroot
+ARG GO_VERSION=1.25.7
+ARG UPSTREAM_VERSION=2.1.15
+ARG UPSTREAM_ARCHIVE_URL=https://github.com/project-zot/zot/archive/refs/tags/v2.1.15.tar.gz
+ARG UPSTREAM_SHA256=183525bc4ffdf031c6c7e40a013f888f3a1f9a7acc149baa01cd6adc00f59b23
 ARG UPSTREAM_GPG_URL=
-ARG PROJECT_NAME=REPLACE_ME
+ARG PROJECT_NAME=zot
 ARG BUILD_DATE
 ARG VCS_REF
 ARG OUR_VERSION=${UPSTREAM_VERSION}-r1
@@ -34,7 +43,7 @@ ARG UPSTREAM_GPG_URL
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-    curl gnupg ca-certificates patch
+    curl gnupg ca-certificates patch make
 
 WORKDIR /build
 
@@ -98,25 +107,27 @@ ARG PROJECT_NAME
 
 WORKDIR /build/source
 
-# Build Go binary — statically linked for minimal runtime image
-# Cache both module downloads and compiled build artifacts
+# Build zot with all extensions including embedded UI
+# make binary: downloads zui pre-built assets (ZUI_VERSION=commit-111cb8e) from
+# https://github.com/project-zot/zui and embeds via go:embed
+# Requires outbound internet for ZUI asset download during build
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build \
-      -trimpath \
-      -ldflags="-s -w -extldflags '-static'" \
-      -o /install/${PROJECT_NAME} \
-      ./cmd/${PROJECT_NAME}
+    make binary OS=linux ARCH=amd64
+
+# Collect binary and generate default config
+RUN mkdir -p /install && \
+    cp bin/zot-linux-amd64 /install/${PROJECT_NAME} && \
+    printf '{\n  "storage": {\n    "rootDirectory": "/var/lib/registry"\n  },\n  "http": {\n    "address": "0.0.0.0",\n    "port": "5000",\n    "compat": ["docker2s2"]\n  },\n  "log": {\n    "level": "info"\n  }\n}\n' > /install/config.json
 
 # Verify the binary
 RUN file /install/${PROJECT_NAME} && \
-    /install/${PROJECT_NAME} --version 2>/dev/null || true
+    /install/${PROJECT_NAME} version 2>/dev/null || true
 
 # =============================================================================
-# Stage 4: Minimal Runtime (distroless for Go — no shell, minimal attack surface)
+# Stage 4: Minimal Runtime (distroless — no shell, minimal attack surface)
 # =============================================================================
-FROM gcr.io/distroless/static-debian12 AS runtime
+FROM ${BASE_IMAGE} AS runtime
 
 ARG PROJECT_NAME
 ARG UPSTREAM_VERSION
@@ -133,8 +144,12 @@ LABEL org.opencontainers.image.title="${PROJECT_NAME} (Go patched fork)" \
       build.our.version="${OUR_VERSION}"
 
 COPY --from=builder /install/${PROJECT_NAME} /usr/local/bin/${PROJECT_NAME}
+COPY --from=builder /install/config.json /etc/zot/config.json
+# Apache-2.0 compliance: NOTICE file must be included in all distributions
+COPY --from=builder /build/source/NOTICE /NOTICE
 
 USER nonroot:nonroot
 
-EXPOSE 8080
-ENTRYPOINT ["/usr/local/bin/REPLACE_ME"]
+EXPOSE 5000
+ENTRYPOINT ["/usr/local/bin/zot"]
+CMD ["serve", "/etc/zot/config.json"]

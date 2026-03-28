@@ -15,12 +15,14 @@
 # -----------------------------------------------------------------------------
 # Build arguments
 # -----------------------------------------------------------------------------
-ARG BASE_IMAGE=ubuntu:22.04
-ARG UPSTREAM_VERSION=REPLACE_ME
-ARG BINARY_URL=REPLACE_ME
-ARG BINARY_SHA256=REPLACE_ME
+ARG BASE_IMAGE=ubuntu:24.04
+ARG UPSTREAM_VERSION=2.1.15
+# Binary URL for linux/amd64 — check https://github.com/project-zot/zot/releases/tag/v2.1.15
+ARG BINARY_URL=https://github.com/project-zot/zot/releases/download/v2.1.15/zot-linux-amd64
+# SHA256 of binary — compute with: shasum -a 256 zot-linux-amd64
+ARG BINARY_SHA256=FILL_IN_BEFORE_USE
 ARG BINARY_GPG_URL=
-ARG PROJECT_NAME=REPLACE_ME
+ARG PROJECT_NAME=zot
 ARG BUILD_DATE
 ARG VCS_REF
 ARG OUR_VERSION=${UPSTREAM_VERSION}-r1
@@ -28,7 +30,7 @@ ARG OUR_VERSION=${UPSTREAM_VERSION}-r1
 # =============================================================================
 # Stage 1: Download & Verify Binary
 # =============================================================================
-FROM ubuntu:22.04 AS downloader
+FROM ubuntu:24.04 AS downloader
 
 ARG BINARY_URL
 ARG BINARY_SHA256
@@ -85,7 +87,7 @@ LABEL org.opencontainers.image.title="${PROJECT_NAME} (patched fork — BINARY F
       org.opencontainers.image.version="${OUR_VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.source="https://github.com/REPLACE_ORG/REPLACE_REPO" \
+      org.opencontainers.image.source="https://github.com/project-zot/zot" \
       build.strategy="binary" \
       build.upstream.version="${UPSTREAM_VERSION}" \
       build.our.version="${OUR_VERSION}" \
@@ -102,5 +104,6 @@ COPY --from=downloader /binary/${PROJECT_NAME} /usr/local/bin/${PROJECT_NAME}
 RUN useradd --system --no-create-home --shell /usr/sbin/nologin appuser
 USER appuser
 
-EXPOSE 8080
-ENTRYPOINT ["/usr/local/bin/REPLACE_ME"]
+EXPOSE 5000
+ENTRYPOINT ["/usr/local/bin/zot"]
+CMD ["serve", "/etc/zot/config.json"]

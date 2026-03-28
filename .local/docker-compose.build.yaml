@@ -21,15 +21,15 @@
 name: foss-build
 
 x-common-args: &common-args
-  UPSTREAM_VERSION: ${UPSTREAM_VERSION:-REPLACE_ME}
-  UPSTREAM_ARCHIVE_URL: ${UPSTREAM_ARCHIVE_URL:-REPLACE_ME}
-  UPSTREAM_SHA256: ${UPSTREAM_SHA256:-REPLACE_ME}
+  UPSTREAM_VERSION: ${UPSTREAM_VERSION:-2.1.15}
+  UPSTREAM_ARCHIVE_URL: ${UPSTREAM_ARCHIVE_URL:-https://github.com/project-zot/zot/archive/refs/tags/v2.1.15.tar.gz}
+  UPSTREAM_SHA256: ${UPSTREAM_SHA256:-183525bc4ffdf031c6c7e40a013f888f3a1f9a7acc149baa01cd6adc00f59b23}
   UPSTREAM_GPG_URL: ${UPSTREAM_GPG_URL:-}
-  PROJECT_NAME: ${PROJECT_NAME:-REPLACE_ME}
+  PROJECT_NAME: ${PROJECT_NAME:-zot}
   BUILD_DATE: ${BUILD_DATE:-}
   VCS_REF: ${VCS_REF:-}
-  OUR_VERSION: ${OUR_VERSION:-REPLACE_ME}
-  BASE_IMAGE: ${BASE_IMAGE:-ubuntu:22.04}
+  OUR_VERSION: ${OUR_VERSION:-2.1.15-r1}
+  BASE_IMAGE: ${BASE_IMAGE:-gcr.io/distroless/base-nossl-debian12:nonroot}
 
 services:
 
@@ -43,7 +43,7 @@ services:
       dockerfile: Dockerfile
       args:
         <<: *common-args
-    image: ${IMAGE_REGISTRY:-localhost:5000}/${PROJECT_NAME:-foss-project}:${OUR_VERSION:-dev}-source
+    image: ${IMAGE_REGISTRY:-localhost:5000}/${PROJECT_NAME:-zot}:${OUR_VERSION:-2.1.15-r1}-source
     profiles:
       - source
       - all
@@ -58,8 +58,8 @@ services:
       dockerfile: Dockerfile.go
       args:
         <<: *common-args
-        GO_VERSION: ${GO_VERSION:-1.22}
-    image: ${IMAGE_REGISTRY:-localhost:5000}/${PROJECT_NAME:-foss-project}:${OUR_VERSION:-dev}-source-go
+        GO_VERSION: ${GO_VERSION:-1.25.7}
+    image: ${IMAGE_REGISTRY:-localhost:5000}/${PROJECT_NAME:-zot}:${OUR_VERSION:-2.1.15-r1}-source-go
     profiles:
       - source-go
       - all
@@ -76,7 +76,7 @@ services:
         BINARY_URL: ${BINARY_URL:-REPLACE_ME}
         BINARY_SHA256: ${BINARY_SHA256:-REPLACE_ME}
         BINARY_GPG_URL: ${BINARY_GPG_URL:-}
-    image: ${IMAGE_REGISTRY:-localhost:5000}/${PROJECT_NAME:-foss-project}:${OUR_VERSION:-dev}-binary
+    image: ${IMAGE_REGISTRY:-localhost:5000}/${PROJECT_NAME:-zot}:${OUR_VERSION:-2.1.15-r1}-binary
     profiles:
       - binary
       - all

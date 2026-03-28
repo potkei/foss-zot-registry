@@ -22,6 +22,7 @@ echo "=== CVE SCAN (Trivy ${TRIVY_VERSION}) ==="
 echo "Image: ${IMAGE}"
 
 docker run --rm \
+  --add-host=host.docker.internal:host-gateway \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "${ROOT_DIR}/.trivyignore":/trivy/.trivyignore \
   -v "${ROOT_DIR}/reports":/reports \
@@ -30,6 +31,7 @@ docker run --rm \
     --format json \
     --output /reports/trivy.json \
     --ignorefile /trivy/.trivyignore \
+    --insecure \
     --severity CRITICAL,HIGH,MEDIUM,LOW \
     "${IMAGE}"
 

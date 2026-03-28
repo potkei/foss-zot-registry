@@ -19,13 +19,13 @@
 # -----------------------------------------------------------------------------
 # Build arguments — override via docker-compose.build.yaml or CLI
 # -----------------------------------------------------------------------------
-ARG BASE_IMAGE=ubuntu:22.04
-ARG BUILDER_IMAGE=ubuntu:22.04
-ARG UPSTREAM_VERSION=REPLACE_ME
-ARG UPSTREAM_ARCHIVE_URL=REPLACE_ME
-ARG UPSTREAM_SHA256=REPLACE_ME
+ARG BASE_IMAGE=ubuntu:24.04
+ARG BUILDER_IMAGE=ubuntu:24.04
+ARG UPSTREAM_VERSION=2.1.15
+ARG UPSTREAM_ARCHIVE_URL=https://github.com/project-zot/zot/archive/refs/tags/v2.1.15.tar.gz
+ARG UPSTREAM_SHA256=183525bc4ffdf031c6c7e40a013f888f3a1f9a7acc149baa01cd6adc00f59b23
 ARG UPSTREAM_GPG_URL=
-ARG PROJECT_NAME=REPLACE_ME
+ARG PROJECT_NAME=zot
 ARG BUILD_DATE
 ARG VCS_REF
 ARG OUR_VERSION=${UPSTREAM_VERSION}-r1
@@ -178,7 +178,7 @@ LABEL org.opencontainers.image.title="${PROJECT_NAME} (patched fork)" \
       org.opencontainers.image.version="${OUR_VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.source="https://github.com/REPLACE_ORG/REPLACE_REPO" \
+      org.opencontainers.image.source="https://github.com/project-zot/zot" \
       build.strategy="source" \
       build.upstream.version="${UPSTREAM_VERSION}" \
       build.our.version="${OUR_VERSION}"
@@ -197,5 +197,6 @@ RUN useradd --system --no-create-home --shell /usr/sbin/nologin appuser
 USER appuser
 
 # TODO: Replace with project-specific port and command
-EXPOSE 8080
-ENTRYPOINT ["/usr/local/bin/REPLACE_ME"]
+EXPOSE 5000
+ENTRYPOINT ["/usr/local/bin/zot"]
+CMD ["serve", "/etc/zot/config.json"]

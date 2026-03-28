@@ -13,8 +13,7 @@ services:
     environment:
       - GOPROXY=${GOPROXY:-direct}
     # Build jsonq before running tests so test_jsonq.bats can find the binary
-    command: >
-      bash -c "
-        cd .tools/jsonq && go build -o ../bin/jq . &&
-        cd /repo && bats --recursive .tools/tests/
-      "
+    entrypoint:
+      - bash
+      - -c
+      - "cd .tools/jsonq && go build -o ../bin/jq . && cd /repo && bats --recursive .tools/tests/"

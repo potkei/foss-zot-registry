@@ -4,3 +4,8 @@
 # reason, accepted_by, expiry date, and ticket reference.
 # Entries here without a matching scan-exceptions.yml entry will be flagged.
 # =============================================================================
+
+# CVE-2026-0861 — glibc integer overflow in memalign (libc6, CVSS 8.1 High)
+# No upstream fix available as of 2026-03-28. Runtime image: distroless/base-nossl-debian12.
+# Accepted by: security-team | Expiry: 2026-09-28 | Review when debian12 ships patched libc6.
+CVE-2026-0861
